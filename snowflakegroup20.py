@@ -1,88 +1,148 @@
 from OpenGL.GL import *
-from OpenGL.GLU import *
 from OpenGL.GLUT import *
-from math import sin, cos, pi, sqrt
+from OpenGL.GLU import *
+import math
 
-RECURSION_DEPTH = 4
-WINDOW_SIZE = 800
+# Global variables
+depth = 4
+snowflake_points = []
 
-# Generate a Koch curve recursively between two points
-def koch_curve(p1, p2, depth):
+
+def generate_koch_points(points, x1, y1, x2, y2, depth):
+    """Generate points for Koch curve recursively"""
     if depth == 0:
-        return [p1, p2]
-    else:
-        x1, y1 = p1
-        x2, y2 = p2
+        # Add only the first point of the segment
+        points.extend([x1, y1])
+        return
 
-        dx = (x2 - x1) / 3.0
-        dy = (y2 - y1) / 3.0
+    # Calculate new points
+    dx = x2 - x1
+    dy = y2 - y1
 
-        a = (x1 + dx, y1 + dy)
-        b = (x1 + 2*dx, y1 + 2*dy)
+    x3 = x1 + dx / 3
+    y3 = y1 + dy / 3
 
-        # Peak of equilateral triangle
-        angle = pi / 3  # 60 degrees
-        px = a[0] + cos(angle) * (b[0] - a[0]) - sin(angle) * (b[1] - a[1])
-        py = a[1] + sin(angle) * (b[0] - a[0]) + cos(angle) * (b[1] - a[1])
-        peak = (px, py)
+    x4 = x1 + 2 * dx / 3
+    y4 = y1 + 2 * dy / 3
 
-        # Recursively divide
-        return (
-            koch_curve(p1, a, depth-1)[:-1] +
-            koch_curve(a, peak, depth-1)[:-1] +
-            koch_curve(peak, b, depth-1)[:-1] +
-            koch_curve(b, p2, depth-1)
-        )
+    angle = math.atan2(dy, dx) - math.pi / 3
+    length = math.sqrt(dx * dx + dy * dy) / 3
+    x5 = x3 + length * math.cos(angle)
+    y5 = y3 + length * math.sin(angle)
 
-# Generate the full Koch snowflake shape
-def generate_snowflake(depth):
-    size = 0.9
-    h = sqrt(3) / 2 * size
-    p1 = (-size/2, -h/3)
-    p2 = (size/2, -h/3)
-    p3 = (0.0, 2*h/3)
+    # Recursive calls for the four segments
+    generate_koch_points(points, x1, y1, x3, y3, depth - 1)
+    generate_koch_points(points, x3, y3, x5, y5, depth - 1)
+    generate_koch_points(points, x5, y5, x4, y4, depth - 1)
+    generate_koch_points(points, x4, y4, x2, y2, depth - 1)
 
-    edge1 = koch_curve(p1, p2, depth)
-    edge2 = koch_curve(p2, p3, depth)
-    edge3 = koch_curve(p3, p1, depth)
 
-    return edge1 + edge2 + edge3
+def generate_koch_snowflake(depth):
+    """Generate the complete Koch snowflake outline"""
+    points = []
+
+    # Base triangle
+    side = 1.5
+    height = side * math.sqrt(3) / 2
+
+    x1 = -side / 2
+    y1 = -height / 3
+
+    x2 = side / 2
+    y2 = -height / 3
+
+    x3 = 0
+    y3 = 2 * height / 3
+
+    # Generate points for each side
+    generate_koch_points(points, x1, y1, x2, y2, depth)
+    generate_koch_points(points, x2, y2, x3, y3, depth)
+    generate_koch_points(points, x3, y3, x1, y1, depth)
+
+    # Add the first point again to close the loop
+    points.extend([points[0], points[1]])
+
+    return points
+
 
 def display():
+    """Display callback function"""
+    # Clear the screen to white
+    glClearColor(1.0, 1.0, 1.0, 1.0)
     glClear(GL_COLOR_BUFFER_BIT)
-    
-    # Simulate gradient by blending center and edge colors
+
+    # Draw filled snowflake
+    glColor3f(0.0, 0.5, 1.0)  # Blue color
     glBegin(GL_TRIANGLE_FAN)
-    glColor3f(0.7, 0.7, 1.0)  # Light blue at center
-    glVertex2f(0.0, 0.0)      # Center vertex
-
-    # Outer vertices
-    glColor3f(0.0, 0.0, 1.0)  # Dark blue edges
-    vertices = generate_snowflake(RECURSION_DEPTH)
-    for vx, vy in vertices:
-        glVertex2f(vx, vy)
-
-    # Close the loop
-    glVertex2f(vertices[0][0], vertices[0][1])
+    for i in range(0, len(snowflake_points), 2):
+        glVertex2f(snowflake_points[i], snowflake_points[i + 1])
     glEnd()
 
-    glFlush()
+    # Draw outline
+    glLineWidth(2.0)
+    glColor3f(0.0, 0.3, 0.8)  # Darker blue
+    glBegin(GL_LINE_LOOP)
+    for i in range(0, len(snowflake_points), 2):
+        glVertex2f(snowflake_points[i], snowflake_points[i + 1])
+    glEnd()
 
-def init():
-    glClearColor(1.0, 1.0, 1.0, 1.0)  # White background
+    glutSwapBuffers()
+
+
+def keyboard(key, x, y):
+    """Keyboard callback function"""
+    global depth, snowflake_points
+
+    key = key.decode('utf-8') if isinstance(key, bytes) else key
+
+    if key == '\x1b':  # ESC key
+        sys.exit(0)
+    elif key in '012345':
+        depth = int(key)
+        snowflake_points = generate_koch_snowflake(depth)
+        glutPostRedisplay()
+
+
+def reshape(width, height):
+    """Reshape callback function"""
+    glViewport(0, 0, width, height)
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
-    gluOrtho2D(-1.5, 1.5, -1.5, 1.5)  # Adjust the view to fit the snowflake
+
+    # Keep aspect ratio square
+    if width <= height:
+        glOrtho(-2.0, 2.0, -2.0 * height / width,
+                2.0 * height / width, -10.0, 10.0)
+    else:
+        glOrtho(-2.0 * width / height,
+                2.0 * width / height, -2.0, 2.0, -10.0, 10.0)
+
+    glMatrixMode(GL_MODELVIEW)
+    glLoadIdentity()
+
 
 def main():
-    glutInit()
-    glutInitDisplayMode(GLUT_SINGLE | GLUT_RGB)
-    glutInitWindowSize(WINDOW_SIZE, WINDOW_SIZE)
-    glutCreateWindow(b"Koch Snowflake with Gradient")
+    global snowflake_points
 
-    init()
+    # Initialize GLUT
+    glutInit(sys.argv)
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB)
+    glutInitWindowSize(800, 800)
+    glutCreateWindow(b"Koch Snowflake")
+
+    # Register callbacks
     glutDisplayFunc(display)
+    glutKeyboardFunc(keyboard)
+    glutReshapeFunc(reshape)
+
+    # Generate initial snowflake points
+    snowflake_points = generate_koch_snowflake(depth)
+
+    # Main loop
     glutMainLoop()
 
+
 if __name__ == "__main__":
+    import sys
+
     main()

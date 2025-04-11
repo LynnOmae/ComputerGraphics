@@ -1,73 +1,144 @@
 #include <GL/glut.h>
+#include <vector>
 #include <cmath>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
-const int WINDOW_WIDTH = 800;
-const int WINDOW_HEIGHT = 800;
-const int RECURSION_DEPTH = 4;
+// Global variables
+int depth = 4;
+std::vector<float> snowflakePoints;
 
-void drawKochSegment(float x1, float y1, float x2, float y2, int depth) {
+// Generate Koch curve points
+void generateKochPoints(std::vector<float>& points, float x1, float y1, float x2, float y2, int depth) {
     if (depth == 0) {
-        glVertex2f(x1, y1);
-        glVertex2f(x2, y2);
+        // Only add the first point of the segment
+        points.push_back(x1);
+        points.push_back(y1);
         return;
     }
 
-    float dx = (x2 - x1) / 3.0;
-    float dy = (y2 - y1) / 3.0;
+    float deltaX = x2 - x1;
+    float deltaY = y2 - y1;
 
-    float xA = x1 + dx;
-    float yA = y1 + dy;
+    float x3 = x1 + deltaX / 3;
+    float y3 = y1 + deltaY / 3;
 
-    float xB = x1 + 2 * dx;
-    float yB = y1 + 2 * dy;
+    float x4 = x1 + 2 * deltaX / 3;
+    float y4 = y1 + 2 * deltaY / 3;
 
-    float midX = (x1 + x2) / 2;
-    float midY = (y1 + y2) / 2;
+    float angle = atan2(deltaY, deltaX) - M_PI / 3;
+    float length = sqrt(deltaX * deltaX + deltaY * deltaY) / 3;
+    float x5 = x3 + length * cos(angle);
+    float y5 = y3 + length * sin(angle);
 
-    float px = x1 + dx * 0.5f - dy * sqrt(3.0f) / 2.0f;
-    float py = y1 + dy * 0.5f + dx * sqrt(3.0f) / 2.0f;
-
-    drawKochSegment(x1, y1, xA, yA, depth - 1);
-    drawKochSegment(xA, yA, px, py, depth - 1);
-    drawKochSegment(px, py, xB, yB, depth - 1);
-    drawKochSegment(xB, yB, x2, y2, depth - 1);
+    generateKochPoints(points, x1, y1, x3, y3, depth - 1);
+    generateKochPoints(points, x3, y3, x5, y5, depth - 1);
+    generateKochPoints(points, x5, y5, x4, y4, depth - 1);
+    generateKochPoints(points, x4, y4, x2, y2, depth - 1);
 }
 
-void drawKochSnowflake() {
+// Generate the complete Koch snowflake outline
+std::vector<float> generateKochSnowflake(int depth) {
+    std::vector<float> points;
+
+    // Base triangle
+    float side = 1.5;
+    float height = side * sqrt(3) / 2;
+
+    float x1 = -side / 2;
+    float y1 = -height / 3;
+
+    float x2 = side / 2;
+    float y2 = -height / 3;
+
+    float x3 = 0;
+    float y3 = 2 * height / 3;
+
+    // Generate points for each side
+    generateKochPoints(points, x1, y1, x2, y2, depth);
+    generateKochPoints(points, x2, y2, x3, y3, depth);
+    generateKochPoints(points, x3, y3, x1, y1, depth);
+
+    // Add the first point again to close the loop
+    points.push_back(points[0]);
+    points.push_back(points[1]);
+
+    return points;
+}
+
+// Display callback function
+void display() {
+    // Clear the screen to white
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
-    glBegin(GL_LINES);
-    glColor3f(0.0f, 0.0f, 1.0f);  // Blue
 
-    float size = 0.8f;
-    float x1 = -size / 2.0f;
-    float y1 = -size / (2.0f * sqrt(3));
-    float x2 = size / 2.0f;
-    float y2 = -size / (2.0f * sqrt(3));
-    float x3 = 0.0f;
-    float y3 = size / sqrt(3);
-
-    drawKochSegment(x1, y1, x2, y2, RECURSION_DEPTH);
-    drawKochSegment(x2, y2, x3, y3, RECURSION_DEPTH);
-    drawKochSegment(x3, y3, x1, y1, RECURSION_DEPTH);
-
+    // Draw filled snowflake
+    glColor3f(0.0f, 0.5f, 1.0f); // Blue color
+    glBegin(GL_TRIANGLE_FAN);
+    for (size_t i = 0; i < snowflakePoints.size(); i += 2) {
+        glVertex2f(snowflakePoints[i], snowflakePoints[i + 1]);
+    }
     glEnd();
-    glFlush();
+
+    // Draw outline
+    glLineWidth(2.0f);
+    glColor3f(0.0f, 0.3f, 0.8f); // Darker blue
+    glBegin(GL_LINE_LOOP);
+    for (size_t i = 0; i < snowflakePoints.size(); i += 2) {
+        glVertex2f(snowflakePoints[i], snowflakePoints[i + 1]);
+    }
+    glEnd();
+
+    glutSwapBuffers();
 }
 
-void init() {
-    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);  // White background
+// Keyboard callback function
+void keyboard(unsigned char key, int x, int y) {
+    if (key == 27) { // ESC key
+        exit(0);
+    }
+    else if (key >= '0' && key <= '5') {
+        depth = key - '0';
+        snowflakePoints = generateKochSnowflake(depth);
+        glutPostRedisplay();
+    }
+}
+
+// Reshape callback function
+void reshape(int width, int height) {
+    glViewport(0, 0, width, height);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluOrtho2D(-1.5, 1.5, -1.5, 1.5);  // Adjust projection to fit the snowflake
+
+    // Keep aspect ratio square
+    if (width <= height)
+        glOrtho(-2.0, 2.0, -2.0 * (GLfloat)height / (GLfloat)width,
+            2.0 * (GLfloat)height / (GLfloat)width, -10.0, 10.0);
+    else
+        glOrtho(-2.0 * (GLfloat)width / (GLfloat)height,
+            2.0 * (GLfloat)width / (GLfloat)height, -2.0, 2.0, -10.0, 10.0);
+
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
 }
 
 int main(int argc, char** argv) {
+    // Initialize GLUT
     glutInit(&argc, argv);
-    glutInitDisplayMode(GLUT_SINGLE | GLUT_RGB);
-    glutInitWindowSize(WINDOW_WIDTH, WINDOW_HEIGHT);
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+    glutInitWindowSize(800, 800);
     glutCreateWindow("Koch Snowflake");
-    init();
-    glutDisplayFunc(drawKochSnowflake);
+
+    // Register callbacks
+    glutDisplayFunc(display);
+    glutKeyboardFunc(keyboard);
+    glutReshapeFunc(reshape);
+
+    // Generate initial snowflake points
+    snowflakePoints = generateKochSnowflake(depth);
+
+    // Main loop
     glutMainLoop();
     return 0;
 }
